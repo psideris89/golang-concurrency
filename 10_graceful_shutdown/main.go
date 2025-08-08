@@ -1,5 +1,14 @@
 package main
 
+import (
+	"fmt"
+	"os"
+	"os/signal"
+	"sync"
+	"syscall"
+	"time"
+)
+
 //@ignore-format
 /*
 🧪 Exercise 10: Graceful Shutdown with Signal Handling
@@ -14,5 +23,45 @@ Requirements:
 		- Print: Shutting down gracefully...
 */
 func main() {
+	chn := make(chan int)
+	stop := make(chan struct{})
 
+	wg := &sync.WaitGroup{}
+
+	for i := 0; i < 3; i++ {
+		wg.Add(1)
+		go func(workerId int) {
+			defer wg.Done()
+			for msg := range chn {
+				fmt.Printf("Worker %d processing message %d\n", workerId, msg)
+				//time.Sleep(1 * time.Second)
+			}
+		}(i)
+	}
+
+	go func() {
+		ctr := 1
+		for {
+			select {
+			case <-stop:
+				fmt.Println("Closing messages channel")
+				close(chn)
+				return
+			case chn <- ctr:
+				fmt.Printf("Adding message %d to channel\n", ctr)
+				ctr++
+				time.Sleep(200 * time.Millisecond)
+			}
+		}
+	}()
+
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+
+	<-c
+	fmt.Println("Shutting down gracefully...")
+	fmt.Println("Closing stop channel")
+	close(stop)
+	fmt.Println("Waiting for workers to finish processing")
+	wg.Wait()
 }
